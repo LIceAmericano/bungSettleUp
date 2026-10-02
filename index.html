@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>벙 정산 계산기</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1f2430; --sub:#6b7280; --line:#e5e7eb; --main:#3b6cf6; --accent:#eef2ff;
+          box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
+  html { scroll-padding-top:env(safe-area-inset-top,0px); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#14161b; --card:#1e2128; --text:#e8eaf0; --sub:#9aa1b0; --line:#2e323c; --main:#6c93ff; --accent:#242a3d; }
+  }
+  :root[data-theme="dark"] { --bg:#14161b; --card:#1e2128; --text:#e8eaf0; --sub:#9aa1b0; --line:#2e323c; --main:#6c93ff; --accent:#242a3d; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px 12px 40px; background:var(--bg); color:var(--text);
+         font-family:-apple-system,BlinkMacSystemFont,"Malgun Gothic","Apple SD Gothic Neo",sans-serif; }
+  .wrap { max-width:560px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
+  label { display:block; font-size:13px; color:var(--sub); margin-bottom:4px; }
+  input[type=text], input[type=number] { width:100%; padding:10px; font-size:16px; border:1px solid var(--line);
+         border-radius:8px; background:var(--bg); color:var(--text); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .row { display:grid; grid-template-columns:28px 1fr auto; gap:8px; align-items:center; margin-bottom:8px; }
+  .row .no { color:var(--sub); font-size:13px; text-align:center; }
+  .chk { display:flex; align-items:center; gap:4px; font-size:14px; color:var(--text); margin:0; white-space:nowrap; min-width:64px; }
+  .chk input { width:18px; height:18px; }
+  .host-tag { font-size:13px; color:var(--main); font-weight:600; min-width:64px; text-align:center; }
+  button { width:100%; padding:13px; font-size:16px; font-weight:600; border:0; border-radius:10px;
+           background:var(--main); color:#fff; cursor:pointer; }
+  button:active { opacity:.85; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { padding:8px 4px; border-bottom:1px solid var(--line); text-align:right; }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:var(--sub); font-weight:500; font-size:12px; }
+  .badge { font-size:11px; padding:2px 6px; border-radius:6px; background:var(--accent); color:var(--main); margin-left:4px; }
+  .sum { font-size:14px; line-height:1.8; }
+  .sum b { float:right; }
+  .err { color:#e5484d; font-size:14px; }
+  .note { font-size:12px; color:var(--sub); margin-top:8px; }
+  .copy { margin-top:10px; background:var(--accent); color:var(--main); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>💰 벙 정산 계산기</h1>
+
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <label for="total">1차 금액 (원)</label>
+        <input type="text" id="total" inputmode="numeric" placeholder="예: 120000">
+      </div>
+      <div>
+        <label for="count">참석 인원 (벙주 포함)</label>
+        <input type="number" id="count" min="2" max="100" value="6">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>참석자 이름 (1번은 벙주 / 신입은 체크)</label>
+    <div id="names"></div>
+  </div>
+
+  <button id="go">정산하기</button>
+
+  <div class="card" id="result" style="margin-top:14px; display:none;"></div>
+</div>
+
+<script>
+const NEWBIE_DEPOSIT = 50000;
+
+function benefitByHeadcount(n) {
+  if (n >= 22) return 20000;
+  if (n >= 11) return 10000;
+  if (n >= 6) return 5000;
+  return 0;
+}
+const won = v => v.toLocaleString("ko-KR") + "원";
+
+const namesEl = document.getElementById("names");
+const countEl = document.getElementById("count");
+const totalEl = document.getElementById("total");
+
+// 금액 입력 시 천 단위 콤마
+totalEl.addEventListener("input", () => {
+  const digits = totalEl.value.replace(/[^0-9]/g, "");
+  totalEl.value = digits ? Number(digits).toLocaleString("ko-KR") : "";
+});
+
+function renderRows() {
+  let n = parseInt(countEl.value, 10);
+  if (isNaN(n) || n < 2) n = 2;
+  if (n > 100) n = 100;
+
+  const prev = [...namesEl.querySelectorAll(".row")].map(r => ({
+    name: r.querySelector("input[type=text]").value,
+    newbie: r.querySelector("input[type=checkbox]")?.checked || false
+  }));
+
+  namesEl.innerHTML = "";
+  for (let i = 0; i < n; i++) {
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const no = document.createElement("span");
+    no.className = "no";
+    no.textContent = i + 1;
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = i === 0 ? "벙주 이름" : "이름";
+    input.value = prev[i] ? prev[i].name : "";
+
+    row.append(no, input);
+
+    if (i === 0) {
+      const tag = document.createElement("span");
+      tag.className = "host-tag";
+      tag.textContent = "벙주";
+      row.append(tag);
+    } else {
+      const lab = document.createElement("label");
+      lab.className = "chk";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = prev[i] ? prev[i].newbie : false;
+      lab.append(cb, document.createTextNode("신입"));
+      row.append(lab);
+    }
+    namesEl.append(row);
+  }
+}
+countEl.addEventListener("input", renderRows);
+renderRows();
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+document.getElementById("go").addEventListener("click", () => {
+  const resEl = document.getElementById("result");
+  resEl.style.display = "block";
+
+  const total = parseInt(totalEl.value.replace(/[^0-9]/g, ""), 10);
+  const rows = [...namesEl.querySelectorAll(".row")];
+  const n = rows.length;
+
+  if (!total || total <= 0) {
+    resEl.innerHTML = '<div class="err">1차 금액을 입력해주세요.</div>';
+    return;
+  }
+
+  const people = rows.map((r, i) => ({
+    name: r.querySelector("input[type=text]").value.trim() || (i === 0 ? "벙주" : "참석자" + (i + 1)),
+    host: i === 0,
+    newbie: i !== 0 && r.querySelector("input[type=checkbox]").checked
+  }));
+
+  // ---- 계산 (소수점 버림, 남는 금액은 벙주 부담) ----
+  const perPerson   = Math.floor(total / n);               // 원래 1인당 금액
+  const maxBenefit  = benefitByHeadcount(n);                // 규정 혜택
+  const applied     = Math.min(maxBenefit, perPerson);      // 실제 적용 혜택 (벙비 초과분 제외)
+  const excess      = maxBenefit - applied;                 // 적용 안 한 혜택
+  const hostBase    = perPerson - applied;                  // 벙주 기본 부담금
+  const remain      = total - hostBase;                     // 나머지 인원이 나눌 금액
+  const others      = Math.floor(remain / (n - 1));         // 나머지 1인당
+  const leftover    = remain - others * (n - 1);            // 버림으로 남은 금액 → 벙주 부담
+  const hostPay     = hostBase + leftover;
+
+  let html = '<div class="sum">' +
+    `<div>1차 금액<b>${won(total)}</b></div>` +
+    `<div>원래 1인당 금액 (${n}명)<b>${won(perPerson)}</b></div>` +
+    `<div>벙주 혜택 (규정)<b>${won(maxBenefit)}</b></div>` +
+    `<div>실제 적용 혜택<b>${won(applied)}</b></div>` +
+    (excess > 0 ? `<div>초과 혜택 (적용 안 함)<b>${won(excess)}</b></div>` : "") +
+    `<div>나머지 ${n - 1}명이 나눌 금액<b>${won(remain)}</b></div>` +
+    '</div>';
+
+  html += '<table style="margin-top:12px"><thead><tr><th>이름</th><th>낼 금액</th><th>선입금</th><th>벙주 환급</th></tr></thead><tbody>';
+
+  let text = `[벙 정산] 총 ${won(total)} / ${n}명\n`;
+  people.forEach(p => {
+    const pay = p.host ? hostPay : others;
+    let deposit = "-", refund = "-", refundText = "";
+    if (p.newbie) {
+      deposit = won(NEWBIE_DEPOSIT);
+      const diff = NEWBIE_DEPOSIT - pay;
+      if (diff >= 0) { refund = won(diff); refundText = ` (선입금 ${won(NEWBIE_DEPOSIT)} → ${won(diff)} 환급)`; }
+      else { refund = "추가 " + won(-diff); refundText = ` (선입금 ${won(NEWBIE_DEPOSIT)} → ${won(-diff)} 추가 입금)`; }
+    }
+    const tag = p.host ? '<span class="badge">벙주</span>' : (p.newbie ? '<span class="badge">신입</span>' : "");
+    html += `<tr><td>${esc(p.name)}${tag}</td><td><b>${won(pay)}</b></td><td>${deposit}</td><td>${refund}</td></tr>`;
+    text += `${p.name}${p.host ? "(벙주)" : ""}: ${won(pay)}${refundText}\n`;
+  });
+  html += '</tbody></table>';
+
+  if (leftover > 0) {
+    html += `<div class="note">나누어떨어지지 않아 남은 ${won(leftover)}은 벙주 부담금에 포함했어요.</div>`;
+  }
+  const newbieCnt = people.filter(p => p.newbie).length;
+  if (newbieCnt > 0) {
+    html += `<div class="note">신입 ${newbieCnt}명은 선입금 ${won(NEWBIE_DEPOSIT)}에서 낼 금액을 뺀 만큼 벙주가 환급해요.</div>`;
+  }
+  html += '<button class="copy" id="copyBtn">결과 복사하기</button>';
+
+  resEl.innerHTML = html;
+  document.getElementById("copyBtn").addEventListener("click", async (e) => {
+    try { await navigator.clipboard.writeText(text); e.target.textContent = "복사됐어요 ✓"; }
+    catch (_) { e.target.textContent = "복사 실패 - 직접 선택해서 복사해주세요"; }
+  });
+});
+</script>
+</body>
+</html>
