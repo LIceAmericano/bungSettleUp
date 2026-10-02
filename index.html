@@ -40,6 +40,10 @@
   .err { color:#e5484d; font-size:14px; }
   .note { font-size:12px; color:var(--sub); margin-top:8px; }
   .copy { margin-top:10px; background:var(--accent); color:var(--main); }
+  footer { margin-top:28px; padding-top:16px; border-top:1px solid var(--line); text-align:center;
+           font-size:12px; line-height:1.7; color:var(--sub); }
+  footer .meta { font-weight:600; color:var(--text); margin-bottom:8px; }
+  footer p { margin:0 0 8px; word-break:keep-all; }
 </style>
 </head>
 <body>
@@ -67,13 +71,20 @@
   <button id="go">정산하기</button>
 
   <div class="card" id="result" style="margin-top:14px; display:none;"></div>
+
+  <footer>
+    <div class="meta">벙 정산 계산기 v1.0 · Made by 얼죽아</div>
+    <p>⚠️ 이 계산기는 참고용 도구입니다. 계산 결과를 그대로 믿지 마시고, 송금 전에 금액을 한 번 더 확인해 주세요. 계산기 사용으로 생긴 금액 차이에 대해서는 제작자가 책임지지 않습니다.</p>
+    <p>🛠 사용 중 버그를 발견하셨거나 추가되었으면 하는 기능이 있다면 오픈채팅방 '얼죽아'로 문의해 주세요. 확인 후 반영해 보겠습니다.</p>
+    <p>모두 재미있고 즐거운 모임 되세요! 🎉</p>
+  </footer>
 </div>
 
 <script>
 const NEWBIE_DEPOSIT = 50000;
 
 function benefitByHeadcount(n) {
-  if (n >= 22) return 20000;
+  if (n >= 22) return 20000;   // 22명 이상은 20,000원 고정
   if (n >= 11) return 10000;
   if (n >= 6) return 5000;
   return 0;
@@ -183,7 +194,12 @@ document.getElementById("go").addEventListener("click", () => {
 
   html += '<table style="margin-top:12px"><thead><tr><th>이름</th><th>낼 금액</th><th>선입금</th><th>벙주 환급</th></tr></thead><tbody>';
 
-  let text = `[벙 정산] 총 ${won(total)} / ${n}명\n`;
+  let text = `[벙 정산] 총 ${won(total)} / ${n}명\n` +
+    `원래 1인당 금액 (${n}명): ${won(perPerson)}\n` +
+    `벙주 혜택 (규정): ${won(maxBenefit)}\n` +
+    `실제 적용 혜택: ${won(applied)}\n` +
+    (excess > 0 ? `초과 혜택 (적용 안 함): ${won(excess)}\n` : "") +
+    `나머지 ${n - 1}명이 나눌 금액: ${won(remain)}\n\n`;
   people.forEach(p => {
     const pay = p.host ? hostPay : others;
     let deposit = "-", refund = "-", refundText = "";
@@ -198,6 +214,7 @@ document.getElementById("go").addEventListener("click", () => {
     text += `${p.name}${p.host ? "(벙주)" : ""}: ${won(pay)}${refundText}\n`;
   });
   html += '</tbody></table>';
+  if (leftover > 0) text += `\n※ 나누어떨어지지 않아 남은 ${won(leftover)}은 벙주 부담금에 포함`;
 
   if (leftover > 0) {
     html += `<div class="note">나누어떨어지지 않아 남은 ${won(leftover)}은 벙주 부담금에 포함했어요.</div>`;
