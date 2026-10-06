@@ -64,7 +64,7 @@
   <div class="card" id="result" style="margin-top:14px; display:none;"></div>
 
   <footer>
-    <div class="meta">벙 정산 계산기 v1.1 · Made by 얼죽아</div>
+    <div class="meta">벙 정산 계산기 v1.2 · Made by 얼죽아</div>
     <p>⚠️ 이 계산기는 참고용 도구입니다. 계산 결과를 그대로 믿지 마시고, 송금 전에 금액을 한 번 더 확인해 주세요. 계산기 사용으로 생긴 금액 차이에 대해서는 제작자가 책임지지 않습니다.</p>
     <p>🛠 사용 중 버그를 발견하셨거나 추가되었으면 하는 기능이 있다면 모임카톡방 '얼죽아'에게 문의해 주세요. 확인 후 반영해 보겠습니다.</p>
     <p>모두 재미있고 즐거운 모임 되세요! 🎉</p>
@@ -240,9 +240,11 @@ $("#go").addEventListener("click", () => {
     return l;
   };
 
+  const snap = { K, grand, rounds: [], rows: [], notes: [] };
   let html = "", text = `[벙 정산] 총 ${won(grand)}${K > 1 ? ` (${K}차)` : ""}\n`;
   rounds.forEach((r, i) => {
     const l = lines(r);
+    snap.rounds.push({ t: `${i + 1}차`, l });
     html += `<div class="sum"><div class="t">${i + 1}차</div>` + l.map(x => `<div>${x[0]}<b>${x[1]}</b></div>`).join("") + "</div>";
     text += `\n[${i + 1}차]\n` + l.map(x => `${x[0]}: ${x[1]}`).join("\n") + "\n";
   });
@@ -260,6 +262,7 @@ $("#go").addEventListener("click", () => {
       ref = diff >= 0 ? won(diff) : "추가 " + won(-diff);
       refText = diff >= 0 ? ` (선입금 ${won(DEPOSIT)} → ${won(diff)} 환급)` : ` (선입금 ${won(DEPOSIT)} → ${won(-diff)} 추가 입금)`;
     }
+    snap.rows.push({ name: p.name, host: p.host, newbie: p.newbie, pay, brk: K > 1 ? brk(p) : "", dep, ref });
     const tag = p.host ? '<span class="badge">벙주</span>' : (p.newbie ? '<span class="badge">신입</span>' : "");
     html += `<tr><td>${esc(p.name)}${tag}${K > 1 ? `<span class="detail">${brk(p)}</span>` : ""}</td><td><b>${won(pay)}</b></td><td>${dep}</td><td>${ref}</td></tr>`;
     text += `${p.name}${p.host ? "(벙주)" : p.newbie ? "(신입)" : ""}: ${won(pay)}${K > 1 ? ` [${brk(p)}]` : ""}${refText}\n`;
@@ -274,9 +277,11 @@ $("#go").addEventListener("click", () => {
   if (newbieCnt) html += `<div class="note">신입 ${newbieCnt}명은 선입금 ${won(DEPOSIT)}에서 전체 차수 합계를 뺀 만큼 벙주가 환급해요.</div>`;
   if (mode === "first" && K > 1) html += `<div class="note">벙주 혜택은 1차에만 적용했어요.</div>`;
   if (mode === "none") html += `<div class="note">벙주 혜택 없이 전원 1/N로 정산했어요.</div>`;
-  html += '<button class="copy" id="copyBtn">결과 복사하기</button>';
+  snap.notes = [...html.matchAll(/<div class="note">(.*?)<\/div>/g)].map(x => x[1]);
+  html += '<button class="copy" id="copyBtn">결과 복사하기</button><button class="copy" id="imgBtn">이미지로 저장</button>';
 
   out.innerHTML = html;
+  $("#imgBtn").addEventListener("click", e => saveImage(snap, e.target));
   $("#copyBtn").addEventListener("click", async e => {
     const btn = e.target, t = text.trim();
     if (await copyText(t)) { btn.textContent = "복사됐어요 ✓"; return; }
@@ -291,6 +296,94 @@ $("#go").addEventListener("click", () => {
     $("#manualCopy").focus();
   });
 });
+
+// 결과를 PNG 이미지로 그리기 (외부 라이브러리 없이 canvas 사용)
+function renderImage(snap) {
+  const W = 720, P = 32, S = 2;
+  const F = '"Malgun Gothic","Apple SD Gothic Neo",-apple-system,sans-serif';
+  const build = (ctx, draw) => {
+    const font = (w, s) => { ctx.font = `${w} ${s}px ${F}`; };
+    const put = (t, x, y, w, s, c, a) => {
+      font(w, s); if (!draw) return;
+      ctx.fillStyle = c; ctx.textAlign = a || "left"; ctx.fillText(t, x, y);
+    };
+    const rule = (y, dash) => {
+      if (!draw) return;
+      ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 1; ctx.setLineDash(dash ? [4, 4] : []);
+      ctx.beginPath(); ctx.moveTo(P, y); ctx.lineTo(W - P, y); ctx.stroke();
+    };
+    const wrap = (t, maxW, w, s) => {
+      font(w, s); const out = []; let cur = "";
+      for (const ch of t) { if (ctx.measureText(cur + ch).width > maxW) { out.push(cur); cur = ch; } else cur += ch; }
+      if (cur) out.push(cur);
+      return out;
+    };
+    let y = P + 24;
+    put("💰 벙 정산 결과", P, y, 700, 26, "#1f2430"); y += 30;
+    put(`총 ${won(snap.grand)}${snap.K > 1 ? ` · ${snap.K}차` : ""}`, P, y, 400, 15, "#6b7280"); y += 22;
+    rule(y); y += 26;
+    snap.rounds.forEach(r => {
+      put(r.t, P, y, 700, 18, "#3b6cf6"); y += 28;
+      r.l.forEach(([k, v]) => {
+        put(k, P, y, 400, 15, "#1f2430"); put(v, W - P, y, 700, 15, "#1f2430", "right"); y += 26;
+      });
+      y += 2; rule(y, true); y += 24;
+    });
+    const c1 = 420, c2 = 548, c3 = W - P;
+    put("이름", P, y, 500, 13, "#6b7280"); put(snap.K > 1 ? "합계" : "낼 금액", c1, y, 500, 13, "#6b7280", "right");
+    put("선입금", c2, y, 500, 13, "#6b7280", "right"); put("벙주 환급", c3, y, 500, 13, "#6b7280", "right");
+    y += 10; rule(y);
+    snap.rows.forEach(p => {
+      const by = y + (p.brk ? 24 : 26);
+      put(p.name, P, by, 600, 16, "#1f2430");
+      const tag = p.host ? "벙주" : p.newbie ? "신입" : "";
+      if (tag) { font(600, 16); const w = ctx.measureText(p.name).width; put(tag, P + w + 8, by, 600, 12, "#3b6cf6"); }
+      if (p.brk) put(p.brk, P, by + 18, 400, 12, "#6b7280");
+      put(won(p.pay), c1, by, 700, 16, "#1f2430", "right");
+      put(p.dep, c2, by, 400, 15, "#1f2430", "right");
+      put(p.ref, c3, by, 400, 15, "#1f2430", "right");
+      y += p.brk ? 54 : 40; rule(y);
+    });
+    y += 22;
+    snap.notes.forEach(n => {
+      wrap("※ " + n, W - 2 * P, 400, 13).forEach(l => { put(l, P, y, 400, 13, "#6b7280"); y += 20; });
+      y += 4;
+    });
+    y += 12;
+    put("벙 정산 계산기 v1.1 · Made by 얼죽아", W / 2, y, 600, 12, "#9aa1b0", "center"); y += 18;
+    put("참고용 계산 결과예요. 송금 전에 금액을 한 번 더 확인해 주세요.", W / 2, y, 400, 12, "#9aa1b0", "center");
+    return y + P;
+  };
+  const H = build(document.createElement("canvas").getContext("2d"), false);
+  const cv = document.createElement("canvas");
+  cv.width = W * S; cv.height = Math.ceil(H * S);
+  const ctx = cv.getContext("2d");
+  ctx.scale(S, S); ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
+  build(ctx, true);
+  return cv;
+}
+
+function saveImage(snap, btn) {
+  const cv = renderImage(snap);
+  cv.toBlob(async blob => {
+    if (!blob) { btn.textContent = "이미지 만들기에 실패했어요"; return; }
+    const d = new Date(), pad = n => String(n).padStart(2, "0");
+    const name = `벙정산_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.png`;
+    const url = URL.createObjectURL(blob);
+    let out = $("#imgOut");
+    if (!out) { out = document.createElement("div"); out.id = "imgOut"; btn.after(out); }
+    out.innerHTML = `<img src="${cv.toDataURL('image/png')}" alt="" style="width:100%;margin-top:10px;border:1px solid var(--line);border-radius:8px;"><div class="note">저장이 안 되면 이미지를 길게 누르세요 (PC는 우클릭 → 이미지 저장).</div>`;
+    const file = new File([blob], name, { type: "image/png" });
+    try {   // 모바일: 공유창에서 갤러리 저장 / 카톡 전송
+      if (/Android|iPhone|iPad/i.test(navigator.userAgent) && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] }); btn.textContent = "이미지 저장/공유 완료 ✓"; return;
+      }
+    } catch (err) { if (err && err.name === "AbortError") return; }
+    const a = document.createElement("a");
+    a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
+    btn.textContent = "이미지로 저장됨 ✓";
+  }, "image/png");
+}
 
 async function copyText(t) {
   try {   // 1) 구형 방식 (사용자 클릭 직후라 대부분 브라우저에서 동작)
